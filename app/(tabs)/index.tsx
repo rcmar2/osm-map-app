@@ -1,6 +1,6 @@
 // app/(tabs)/Index.tsx
 import { Asset } from "expo-asset";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy"; // ✅ use legacy to avoid deprecation errors
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { WebView } from "react-native-webview";
@@ -25,17 +25,22 @@ export default function Index() {
 
   const webRef = useRef<WebView>(null);
   const [webReady, setWebReady] = useState(false);
-  const [htmlUri, setHtmlUri] = useState<string | null>(null);
+
+  // Option A: hold the HTML content string (not a file:// URI)
+  const [htmlContent, setHtmlContent] = useState<string | null>(null);
+
   const [showFilter, setShowFilter] = useState(false);
   const [minPower, setMinPower] = useState<string>("50");
   const [stations, setStations] = useState<Station[]>(stationsData as Station[]);
 
-  // Load the local HTML asset and get a file:// or local uri Expo can serve
+  // Load the bundled HTML and read it as a string
   useEffect(() => {
     (async () => {
       const asset = Asset.fromModule(require("../../assets/map.html"));
       await asset.downloadAsync();
-      setHtmlUri(asset.localUri ?? asset.uri);
+      const local = asset.localUri ?? asset.uri;
+      const content = await FileSystem.readAsStringAsync(local);
+      setHtmlContent(content);
     })();
   }, []);
 
@@ -60,15 +65,11 @@ export default function Index() {
 
   // Send init + stations when ready
   const sendInit = useCallback(() => {
-    if (webRef.current) {
-      webRef.current.postMessage(JSON.stringify({ type: "init", sygicKey: SYGIC_KEY }));
-    }
+    webRef.current?.postMessage(JSON.stringify({ type: "init", sygicKey: SYGIC_KEY }));
   }, [SYGIC_KEY]);
 
   const sendStations = useCallback(() => {
-    if (webRef.current) {
-      webRef.current.postMessage(JSON.stringify({ type: "setStations", data: stations }));
-    }
+    webRef.current?.postMessage(JSON.stringify({ type: "setStations", data: stations }));
   }, [stations]);
 
   useEffect(() => {
@@ -86,7 +87,7 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      {htmlUri ? (
+      {htmlContent ? (
         <WebView
           ref={webRef}
           originWhitelist={["*"]}
@@ -94,7 +95,8 @@ export default function Index() {
           domStorageEnabled
           setSupportMultipleWindows={false}
           onLoadEnd={() => setWebReady(true)}
-          source={{ uri: htmlUri }}
+          // Provide HTML directly + a fake https baseUrl to satisfy relative loading rules
+          source={{ html: htmlContent, baseUrl: "https://local" }}
         />
       ) : (
         <View style={{ flex: 1, backgroundColor: "#000" }} />
