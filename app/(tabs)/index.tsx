@@ -1,10 +1,12 @@
 // app/(tabs)/Index.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { WebView } from "react-native-webview";
 import stationsData from "../../assets/stations.json";
+
 
 type Station = {
   lat: number;
@@ -100,6 +102,29 @@ export default function Index() {
     <View style={styles.container}>
       {htmlContent ? (
         <WebView
+          onMessage={async (e) => {
+            try {
+              const msg = JSON.parse(e.nativeEvent.data);
+              if (msg.type === "addFavorite" && msg.station) {
+                const key = "favorites";
+                const stored = await AsyncStorage.getItem(key);
+                const favorites = stored ? JSON.parse(stored) : [];
+                // avoid duplicates by lat/lon
+                const exists = favorites.some(
+                  (f: any) => f.lat === msg.station.lat && f.lon === msg.station.lon
+                );
+                if (!exists) {
+                  favorites.push(msg.station);
+                  await AsyncStorage.setItem(key, JSON.stringify(favorites));
+                  console.log("Added favorite:", msg.station.name);
+                }
+              } else if (msg.type === "navigateTo") {
+                console.log("Navigation placeholder:", msg.station);
+              }
+            } catch (err) {
+              console.warn("Message parse error", err);
+            }
+          }}
           ref={webRef}
           originWhitelist={["*"]}
           javaScriptEnabled

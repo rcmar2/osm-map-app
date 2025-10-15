@@ -1,7 +1,8 @@
 // app/(tabs)/favorites.tsx
-import React, { useMemo } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native"; // refresh on focus
+import React, { useCallback, useState } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
-import stationsData from "../../assets/stations.json";
 
 type Station = {
   lat: number;
@@ -16,12 +17,24 @@ type Station = {
 };
 
 export default function Favorites() {
-  // Initially show only Milence chargers
-  const favorites = useMemo(() => {
-    return (stationsData as Station[]).filter(
-      (s) => (s.operator || "").toLowerCase() === "milence"
-    );
+  const [favorites, setFavorites] = useState<Station[]>([]);
+
+  // Load favorites from persistent storage
+  const loadFavorites = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem("favorites");
+      setFavorites(stored ? JSON.parse(stored) : []);
+    } catch (e) {
+      console.log("Error loading favorites:", e);
+    }
   }, []);
+
+  // Reload every time the tab comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadFavorites();
+    }, [loadFavorites])
+  );
 
   const renderItem = ({ item }: { item: Station }) => {
     const addr = [item.street, item.city, item.country].filter(Boolean).join(", ");
@@ -43,7 +56,7 @@ export default function Favorites() {
         keyExtractor={(item, i) => `${item.lat}-${item.lon}-${i}`}
         renderItem={renderItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={<Text style={styles.empty}>No Milence chargers found.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>No favorites yet.</Text>}
       />
     </View>
   );
