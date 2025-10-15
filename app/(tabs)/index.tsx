@@ -1,8 +1,8 @@
 // app/(tabs)/Index.tsx
 import { Asset } from "expo-asset";
-import * as FileSystem from "expo-file-system/legacy"; // ✅ use legacy to avoid deprecation errors
+import * as FileSystem from "expo-file-system/legacy";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { WebView } from "react-native-webview";
 import stationsData from "../../assets/stations.json";
 
@@ -26,14 +26,17 @@ export default function Index() {
   const webRef = useRef<WebView>(null);
   const [webReady, setWebReady] = useState(false);
 
-  // Option A: hold the HTML content string (not a file:// URI)
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
-
   const [showFilter, setShowFilter] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
   const [minPower, setMinPower] = useState<string>("50");
   const [stations, setStations] = useState<Station[]>(stationsData as Station[]);
 
-  // Load the bundled HTML and read it as a string
+  const [clusteringEnabled, setClusteringEnabled] = useState(true);
+  const [autoRouting, setAutoRouting] = useState(false);
+
+  // Load HTML from assets
   useEffect(() => {
     (async () => {
       const asset = Asset.fromModule(require("../../assets/map.html"));
@@ -44,7 +47,7 @@ export default function Index() {
     })();
   }, []);
 
-  // Load optional side-file stations.json from app storage (if present)
+  // Optionally load external stations.json if user placed one
   useEffect(() => {
     (async () => {
       try {
@@ -63,7 +66,6 @@ export default function Index() {
     })();
   }, []);
 
-  // Send init + stations when ready
   const sendInit = useCallback(() => {
     webRef.current?.postMessage(JSON.stringify({ type: "init", sygicKey: SYGIC_KEY }));
   }, [SYGIC_KEY]);
@@ -71,6 +73,10 @@ export default function Index() {
   const sendStations = useCallback(() => {
     webRef.current?.postMessage(JSON.stringify({ type: "setStations", data: stations }));
   }, [stations]);
+
+  const sendClusteringToggle = useCallback((enabled: boolean) => {
+    webRef.current?.postMessage(JSON.stringify({ type: "toggleClustering", enabled }));
+  }, []);
 
   useEffect(() => {
     if (webReady) {
@@ -85,6 +91,11 @@ export default function Index() {
     setShowFilter(false);
   }
 
+  function toggleClustering(value: boolean) {
+    setClusteringEnabled(value);
+    sendClusteringToggle(value);
+  }
+
   return (
     <View style={styles.container}>
       {htmlContent ? (
@@ -95,17 +106,22 @@ export default function Index() {
           domStorageEnabled
           setSupportMultipleWindows={false}
           onLoadEnd={() => setWebReady(true)}
-          // Provide HTML directly + a fake https baseUrl to satisfy relative loading rules
           source={{ html: htmlContent, baseUrl: "https://local" }}
         />
       ) : (
         <View style={{ flex: 1, backgroundColor: "#000" }} />
       )}
 
-      <Pressable style={styles.fab} onPress={() => setShowFilter(true)}>
+      {/* Floating buttons */}
+      <Pressable style={styles.fabFilter} onPress={() => setShowFilter(true)}>
         <Text style={styles.fabText}>Filter</Text>
       </Pressable>
 
+      <Pressable style={styles.fabSettings} onPress={() => setShowSettings(true)}>
+        <Text style={styles.fabText}>⚙️</Text>
+      </Pressable>
+
+      {/* Filter modal */}
       <Modal visible={showFilter} transparent animationType="slide" onRequestClose={() => setShowFilter(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -128,18 +144,43 @@ export default function Index() {
           </View>
         </View>
       </Modal>
+
+      {/* Settings modal */}
+      <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.title}>Settings</Text>
+            <View style={styles.settingRow}>
+              <Text style={styles.label}>Clustering</Text>
+              <Switch value={clusteringEnabled} onValueChange={toggleClustering} />
+            </View>
+            <View style={styles.settingRow}>
+              <Text style={styles.label}>Automatic routing</Text>
+              <Switch value={autoRouting} onValueChange={setAutoRouting} />
+            </View>
+            <View style={styles.row}>
+              <Pressable onPress={() => setShowSettings(false)} style={[styles.btn, styles.btnPrimary]}>
+                <Text style={styles.btnText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-  fab: {
+  fabFilter: {
     position: "absolute", right: 16, bottom: 24,
-    backgroundColor: "#1f2937", paddingHorizontal: 16, paddingVertical: 12,
-    borderRadius: 999
+    backgroundColor: "#1f2937", paddingHorizontal: 16, paddingVertical: 12, borderRadius: 999,
   },
-  fabText: { color: "#fff", fontWeight: "600" },
+  fabSettings: {
+    position: "absolute", right: 16, top: 32,
+    backgroundColor: "#1f2937", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
+  },
+  fabText: { color: "#fff", fontWeight: "600", fontSize: 16 },
   modalBackdrop: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "flex-end"
   },
@@ -153,9 +194,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#0b1220", borderColor: "#334155", borderWidth: 1, color: "#fff",
     paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, marginBottom: 12
   },
+  settingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   row: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
   btn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 },
   btnSecondary: { backgroundColor: "#374151" },
   btnPrimary: { backgroundColor: "#16a34a" },
-  btnText: { color: "#fff", fontWeight: "600" }
+  btnText: { color: "#fff", fontWeight: "600" },
 });
