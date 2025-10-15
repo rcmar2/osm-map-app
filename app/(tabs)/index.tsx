@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1f2937", paddingHorizontal: 16, paddingVertical: 12, borderRadius: 999,
   },
   fabSettings: {
-    position: "absolute", right: 16, top: 32,
+    position: "absolute", right: 16, top: 48,
     backgroundColor: "#1f2937", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
   },
   fabText: { color: "#fff", fontWeight: "600", fontSize: 16 },
