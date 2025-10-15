@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Linking, Modal, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Modal, Platform, Pressable, StyleSheet, Switch, Text, TextInput, ToastAndroid, View } from "react-native";
 import { WebView } from "react-native-webview";
 import stationsData from "../../assets/stations.json";
 
@@ -147,7 +147,11 @@ export default function Index() {
                 if (!exists) {
                   favorites.push(msg.station);
                   await AsyncStorage.setItem(key, JSON.stringify(favorites));
+                  ToastAndroid.show("Added to favorites", ToastAndroid.SHORT);   // ← ✅ toast
                   console.log("Added favorite:", msg.station.name);
+                }
+                else {
+                  ToastAndroid.show("Already in favorites", ToastAndroid.SHORT);
                 }
               } else if (msg.type === "navigateTo") {
                 console.log("Navigation placeholder:", msg.station);
