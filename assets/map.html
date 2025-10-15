@@ -167,7 +167,11 @@ function buildPopupHTML(s) {
            L.DomEvent.disableClickPropagation(el);
 
            const onNav = () => postToRN("navigateTo", { station: s });
-           const onFav = () => postToRN("addFavorite", { station: s });
+
+           const onFav = () => {
+              postToRN("addFavorite", { station: s });
+              map.closePopup(); // ✅ closes the currently open popup
+           };
 
            const navBtn = el.querySelector(".btn-nav");
            const favBtn = el.querySelector(".btn-fav");
