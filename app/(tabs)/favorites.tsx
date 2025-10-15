@@ -1,5 +1,5 @@
 // app/(tabs)/favorites.tsx
-import { Ionicons } from "@expo/vector-icons"; // ✅ icon for 3 dots
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -8,11 +8,12 @@ import {
   FlatList,
   Modal,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Station = {
   lat: number;
@@ -26,9 +27,10 @@ type Station = {
   hdv?: string;
 };
 
-const router = useRouter();
-
 export default function Favorites() {
+  const router = useRouter();                    // ✅ hook inside component
+  const insets = useSafeAreaInsets();            // ✅ safe-area for top spacer
+
   const [favorites, setFavorites] = useState<Station[]>([]);
   const [selected, setSelected] = useState<Station | null>(null);
   const [showMenu, setShowMenu] = useState(false);
@@ -42,6 +44,7 @@ export default function Favorites() {
     }
   }, []);
 
+  // Refresh when the tab gains focus
   useFocusEffect(
     useCallback(() => {
       loadFavorites();
@@ -52,12 +55,12 @@ export default function Favorites() {
     try {
       const key = "favorites";
       const stored = await AsyncStorage.getItem(key);
-      const favorites = stored ? JSON.parse(stored) : [];
-      const filtered = favorites.filter(
-        (f: Station) => !(f.lat === station.lat && f.lon === station.lon)
+      const list: Station[] = stored ? JSON.parse(stored) : [];
+      const filtered = list.filter(
+        (f) => !(f.lat === station.lat && f.lon === station.lon)
       );
       await AsyncStorage.setItem(key, JSON.stringify(filtered));
-      setFavorites(filtered); // ✅ immediate refresh
+      setFavorites(filtered); // immediate UI refresh
       setShowMenu(false);
       setSelected(null);
     } catch (err) {
@@ -69,12 +72,12 @@ export default function Favorites() {
     const addr = [item.street, item.city, item.country].filter(Boolean).join(", ");
     return (
       <View style={styles.row}>
+        {/* Main press area -> navigate to map & focus marker */}
         <Pressable
           style={{ flex: 1 }}
           onPress={() => {
-            // Switch to Home tab
-            router.replace("/");
-            setTimeout(() => (global as any).focusOnStation?.(item), 50); // tiny delay helps ensure WebView is mounted
+            router.replace("/"); // go to Home/Map tab
+            setTimeout(() => (global as any).focusOnStation?.(item), 50); // let WebView mount
           }}
         >
           <Text style={styles.name}>{item.name || "Unnamed"}</Text>
@@ -83,6 +86,8 @@ export default function Favorites() {
             {item.operator || "N/A"} · {(item.power ?? "?")} kW · {item.hdv || "-"}
           </Text>
         </Pressable>
+
+        {/* 3-dots action button */}
         <Pressable
           style={styles.moreBtn}
           onPress={() => {
@@ -97,20 +102,33 @@ export default function Favorites() {
   };
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={favorites}
-        keyExtractor={(item, i) => `${item.lat}-${item.lon}-${i}`}
-        renderItem={renderItem}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={<Text style={styles.empty}>No favorites yet.</Text>}
-      />
+    <View style={styles.screen}>
+      {/* Dark status bar + dark grey top spacer */}
+      <StatusBar backgroundColor="#111827" barStyle="light-content" />
+      <View style={[styles.topSpacer, { height: insets.top + 8 }]} />
 
-      {/* Action menu modal */}
-      <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>
+      {/* Content */}
+      <View style={styles.container}>
+        <FlatList
+          data={favorites}
+          keyExtractor={(item, i) => `${item.lat}-${item.lon}-${i}`}
+          renderItem={renderItem}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListEmptyComponent={<Text style={styles.empty}>No favorites yet.</Text>}
+        />
+      </View>
+
+      {/* Actions modal */}
+      <Modal
+        visible={showMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
         <View style={styles.menuBackdrop}>
           <View style={styles.menuCard}>
             <Text style={styles.menuTitle}>Actions</Text>
+
             <Pressable
               style={styles.menuItem}
               onPress={() => selected && removeFavorite(selected)}
@@ -133,7 +151,10 @@ export default function Favorites() {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: "#0b1220" },
+  topSpacer: { backgroundColor: "#111827" }, // dark grey bar under system icons
   container: { flex: 1, backgroundColor: "#0b1220", paddingVertical: 8 },
+
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -141,42 +162,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   moreBtn: { padding: 8 },
+
   name: { color: "#fff", fontWeight: "700", fontSize: 16, marginBottom: 2 },
   address: { color: "#cbd5e1", fontSize: 13, marginBottom: 2 },
   meta: { color: "#94a3b8", fontSize: 12 },
-  separator: {
-    height: 1,
-    backgroundColor: "#1e293b",
-    marginHorizontal: 16,
-  },
-  empty: {
-    color: "#64748b",
-    textAlign: "center",
-    marginTop: 32,
-  },
+
+  separator: { height: 1, backgroundColor: "#1e293b", marginHorizontal: 16 },
+  empty: { color: "#64748b", textAlign: "center", marginTop: 32 },
+
   menuBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
     alignItems: "center",
     justifyContent: "center",
   },
-  menuCard: {
-    backgroundColor: "#1e293b",
-    width: "70%",
-    borderRadius: 12,
-    padding: 16,
-  },
-  menuTitle: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    gap: 8,
-  },
+  menuCard: { backgroundColor: "#1e293b", width: "70%", borderRadius: 12, padding: 16 },
+  menuTitle: { color: "#fff", fontWeight: "700", fontSize: 16, marginBottom: 8 },
+  menuItem: { flexDirection: "row", alignItems: "center", paddingVertical: 10, gap: 8 },
   menuText: { color: "#fff", fontSize: 14 },
 });
