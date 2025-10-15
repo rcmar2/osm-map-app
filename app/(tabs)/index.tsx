@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Modal, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { WebView } from "react-native-webview";
 import stationsData from "../../assets/stations.json";
 
@@ -117,6 +117,25 @@ export default function Index() {
           onMessage={async (e) => {
             try {
               const msg = JSON.parse(e.nativeEvent.data);
+
+              if (msg.type === "navigateTo" && msg.station) {
+                const { lat, lon, name } = msg.station || {};
+                if (typeof lat === "number" && typeof lon === "number") {
+                  // Prefer native Google Maps intent if available
+                  const gmapsNative =
+                    Platform.OS === "android"
+                      ? `google.navigation:q=${lat},${lon}`                    // Android turn-by-turn
+                      : `comgooglemaps://?daddr=${lat},${lon}&directionsmode=driving`; // iOS app
+
+                  const gmapsWeb = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+
+                  const canOpenNative = await Linking.canOpenURL(gmapsNative);
+                  await Linking.openURL(canOpenNative ? gmapsNative : gmapsWeb);
+                } else {
+                  Alert.alert("Navigation", "This charger has no valid coordinates.");
+                }
+              }
+
               if (msg.type === "addFavorite" && msg.station) {
                 const key = "favorites";
                 const stored = await AsyncStorage.getItem(key);

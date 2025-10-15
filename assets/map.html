@@ -166,7 +166,10 @@ function buildPopupHTML(s) {
            // stop map interactions when pressing buttons
            L.DomEvent.disableClickPropagation(el);
 
-           const onNav = () => postToRN("navigateTo", { station: s });
+           const onNav = () => {
+              postToRN("navigateTo", { station: s });
+              map.closePopup(); // close immediately for snappy UX
+           };
 
            const onFav = () => {
               postToRN("addFavorite", { station: s });
