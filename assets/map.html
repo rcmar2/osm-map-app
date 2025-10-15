@@ -14,6 +14,20 @@
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
     }
   </style>
+<style>
+  .popup { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .popup h4 { margin: 0 0 4px; font-size: 14px; }
+  .popup .muted { color:#6b7280; font-size:12px; margin-bottom:4px; }
+  .popup .op { color:#94a3b8; font-size:12px; margin-bottom:4px; }
+  .popup .pow { color:#94a3b8; font-size:12px; margin-bottom:8px; }
+  .actions { display:flex; gap:8px; }
+  .btn {
+    padding:6px 10px; border-radius:8px; font-size:12px; border:1px solid #2563eb;
+    background:#1d4ed8; color:#fff;
+  }
+  .btn:hover { filter:brightness(1.05); }
+</style>
+ 
 </head>
 <body>
   <div id="map"></div>
@@ -31,6 +45,30 @@
     let clusteringOn = true;           // current clustering state
     let lastMinKw = 0;                 // remember last applied filter
     let pendingStationsData = null;    // buffer if stations arrive before init
+
+    function postToRN(type, payload) {
+      try {
+         window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
+       } catch (e) { console.log(e); }
+    }
+
+function buildPopupHTML(s) {
+  const addr = [s.street || "", s.city || "", s.country || ""].filter(Boolean).join(" ");
+  const power = (s.power ?? "?") + " kW";
+  const hdv = s.hdv || "-";
+  return `
+    <div class="popup">
+      <h4>${s.name || "Unnamed"}</h4>
+      <div class="muted">${addr || "Unknown address"}</div>
+      <div class="op">${s.operator || "N/A"}</div>
+      <div class="pow">${power} · ${hdv}</div>
+      <div class="actions">
+        <button class="btn btn-nav" data-id="${s._id || ""}">Navigate to</button>
+        <button class="btn btn-fav" data-id="${s._id || ""}">Add to favorites</button>
+      </div>
+    </div>`;
+}
+
 
     // --- helper: build a simple SVG pin icon in given color ---
     function makePinIcon(color) {
@@ -113,13 +151,36 @@
         const heavy = hdv.includes("N2") || hdv.includes("N3");
         const color = heavy ? "#ff7b00" : "#007bff"; // orange vs blue
         const addr = [s.street || "", s.city || "", s.country || ""].filter(Boolean).join(" ");
-        const popup =
-          `<b>${s.name || "Unnamed"}</b><br/>
-           ${addr}<br/>
-           Operator: ${s.operator || "N/A"}<br/>
-           Power: ${(s.power ?? "?")} kW`;
 
-        const marker = L.marker([s.lat, s.lon], { icon: makePinIcon(color) }).bindPopup(popup);
+        // give an internal id to help RN side if needed
+        if (s._id == null) s._id = `${s.lat},${s.lon},${s.name || ""}`;
+
+        const marker = L
+         .marker([s.lat, s.lon], { icon: makePinIcon(color) })
+         .bindPopup(buildPopupHTML(s));
+
+        marker.on("popupopen", (e) => {
+           const el = e.popup.getElement();
+           if (!el) return;
+
+           // stop map interactions when pressing buttons
+           L.DomEvent.disableClickPropagation(el);
+
+           const onNav = () => postToRN("navigateTo", { station: s });
+           const onFav = () => postToRN("addFavorite", { station: s });
+
+           const navBtn = el.querySelector(".btn-nav");
+           const favBtn = el.querySelector(".btn-fav");
+           if (navBtn) navBtn.addEventListener("click", onNav);
+           if (favBtn) favBtn.addEventListener("click", onFav);
+
+           // cleanup when popup closes
+           marker.once("popupclose", () => {
+              if (navBtn) navBtn.removeEventListener("click", onNav);
+              if (favBtn) favBtn.removeEventListener("click", onFav);
+           });
+        });
+
         return { ...s, layer: marker };
       });
 
