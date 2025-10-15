@@ -2,6 +2,7 @@
 import { Ionicons } from "@expo/vector-icons"; // ✅ icon for 3 dots
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   FlatList,
@@ -11,6 +12,7 @@ import {
   Text,
   View,
 } from "react-native";
+
 
 type Station = {
   lat: number;
@@ -23,6 +25,8 @@ type Station = {
   power?: number;
   hdv?: string;
 };
+
+const router = useRouter();
 
 export default function Favorites() {
   const [favorites, setFavorites] = useState<Station[]>([]);
@@ -65,13 +69,20 @@ export default function Favorites() {
     const addr = [item.street, item.city, item.country].filter(Boolean).join(", ");
     return (
       <View style={styles.row}>
-        <View style={{ flex: 1 }}>
+        <Pressable
+          style={{ flex: 1 }}
+          onPress={() => {
+            // Switch to Home tab
+            router.replace("/");
+            setTimeout(() => (global as any).focusOnStation?.(item), 50); // tiny delay helps ensure WebView is mounted
+          }}
+        >
           <Text style={styles.name}>{item.name || "Unnamed"}</Text>
           <Text style={styles.address}>{addr || "Unknown address"}</Text>
           <Text style={styles.meta}>
             {item.operator || "N/A"} · {(item.power ?? "?")} kW · {item.hdv || "-"}
           </Text>
-        </View>
+        </Pressable>
         <Pressable
           style={styles.moreBtn}
           onPress={() => {

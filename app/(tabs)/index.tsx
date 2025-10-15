@@ -26,6 +26,18 @@ export default function Index() {
     "12e40664a6fadbeca9257eaf163be047befdb1c87f83a9a7b84960ebcaf299c6";
 
   const webRef = useRef<WebView>(null);
+
+  // Expose a static method for other tabs to focus on a station
+  (global as any).focusOnStation = (station: { lat: number; lon: number }) => {
+    webRef.current?.postMessage(
+      JSON.stringify({
+        type: "focusStation",
+        lat: station.lat,
+        lon: station.lon,
+      })
+    );
+  };
+
   const [webReady, setWebReady] = useState(false);
 
   const [htmlContent, setHtmlContent] = useState<string | null>(null);

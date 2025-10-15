@@ -220,6 +220,12 @@ function buildPopupHTML(s) {
       // Re-apply current filter into the (new) active group
       applyFilter(lastMinKw);
     }
+  
+    function focusStation(lat, lon) {
+        if (!map) return;
+        map.setView([lat, lon], 15, { animate: true });
+        //map.flyTo([lat, lon], 16, { animate: true, duration: 1.2 });
+    }
 
     // Message bridge
     function handleMsg(e) {
@@ -233,6 +239,9 @@ function buildPopupHTML(s) {
           applyFilter(Number(msg.minKw) || 0);
         } else if (msg.type === "toggleClustering") {
           toggleClustering(!!msg.enabled);
+        }
+        else if (msg.type === "focusStation" && msg.lat && msg.lon) {
+          focusStation(msg.lat, msg.lon);
         }
       } catch (err) {
         console.error(err);
