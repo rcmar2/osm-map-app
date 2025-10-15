@@ -1,0 +1,24 @@
+[
+  {
+    "lat": 48.25933842,
+    "lon": 12.15786893,
+    "name": "EnBW 84405 Dorfen, A94",
+    "street": "Zieglhaus 1",
+    "city": "Dorfen",
+    "country": "DEU",
+    "operator": "EnBW",
+    "power": 300.0,
+    "hdv": "N1&N2"
+  },
+  {
+    "lat": 50.0755,
+    "lon": 14.4378,
+    "name": "Prague Center",
+    "street": "Václavské nám.",
+    "city": "Prague",
+    "country": "CZE",
+    "operator": "ČEZ",
+    "power": 120,
+    "hdv": "N1"
+  }
+]

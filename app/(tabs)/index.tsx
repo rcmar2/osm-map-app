@@ -1,16 +1,59 @@
-// app/(tabs)/Index.tsx
-import React, { useMemo, useRef, useState } from "react";
+import * as FileSystem from "expo-file-system";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { WebView } from "react-native-webview";
+import stationsData from "../../assets/stations.json"; // default dataset bundled with the app
+
+type Station = {
+  lat: number;
+  lon: number;
+  name: string;
+  street?: string;
+  city?: string;
+  country?: string;
+  operator?: string;
+  power?: number;
+  hdv?: string;
+};
 
 export default function Index() {
-  const SYGIC_KEY = process.env.EXPO_PUBLIC_SYGIC_KEY || "12e40664a6fadbeca9257eaf163be047befdb1c87f83a9a7b84960ebcaf299c6";
-  const webRef = useRef<WebView>(null);
+  const SYGIC_KEY =
+    process.env.EXPO_PUBLIC_SYGIC_KEY ||
+    "12e40664a6fadbeca9257eaf163be047befdb1c87f83a9a7b84960ebcaf299c6";
 
+  const webRef = useRef<WebView>(null);
+  const [webReady, setWebReady] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [minPower, setMinPower] = useState<string>("50"); // kW
+  const [stations, setStations] = useState<Station[]>(stationsData as Station[]);
 
-  const html = useMemo(() => `
+  // --- Load side-file if present (fixes TS null warning by guarding the dir) ---
+  useEffect(() => {
+    (async () => {
+      try {
+        const baseDir =
+          FileSystem.documentDirectory ?? FileSystem.cacheDirectory; // ✅ handle null
+        if (!baseDir) return; // very rare on native; just skip if still null
+
+        const fileUri = baseDir + "stations.json";
+        const info = await FileSystem.getInfoAsync(fileUri);
+        if (info.exists) {
+          const content = await FileSystem.readAsStringAsync(fileUri);
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+            setStations(parsed as Station[]);
+          } else {
+            console.log("stations.json is not an array; using bundled default.");
+          }
+        }
+      } catch (e) {
+        console.log("Could not load side stations.json, using default.", e);
+      }
+    })();
+  }, []);
+
+  const html = useMemo(
+    () => `
 <!doctype html>
 <html>
 <head>
@@ -21,66 +64,95 @@ export default function Index() {
     html, body, #map { height: 100%; margin: 0; }
     .badge { position:absolute; bottom:6px; left:8px; padding:2px 6px; border-radius:4px;
       background:rgba(0,0,0,0.5); color:#fff; font-size:11px; z-index:1000; }
-    .filterBtn { position:absolute; top:10px; right:10px; z-index:1001;
-      background:rgba(0,0,0,0.6); color:#fff; padding:8px 10px; border-radius:6px; font-family:sans-serif; }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <div class="badge">© OpenStreetMap contributors | © Sygic</div>
-  <div class="filterBtn">Filter in RN ↑</div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/@mapbox/polyline@1.1.1/src/polyline.js"></script>
   <script src="https://maps.api.sygic.com/js/leaflet.sygic-1.1.0.js"></script>
 
   <script>
     var map = L.map('map');
     L.TileLayer.sygic('${SYGIC_KEY}', { poi: true }).addTo(map);
 
-    // Germany bounds (approx)
-    var deSW = L.latLng(47.270111, 5.866342);
-    var deNE = L.latLng(55.058347, 15.041896);
-    var deBounds = L.latLngBounds(deSW, deNE);
-    map.fitBounds(deBounds);
+    // Fit a wide Central Europe view
+    var sw = L.latLng(45.0, 5.0);
+    var ne = L.latLng(55.5, 20.0);
+    map.fitBounds(L.latLngBounds(sw, ne));
 
-    // Seeded RNG for deterministic markers
-    let seed = 1337;
-    function rand(){ seed = (seed * 1664525 + 1013904223) % 4294967296; return seed/4294967296; }
-    function r(min,max){ return min + rand()*(max-min); }
+    let stations = [];
 
-    // Create 10 stations with power meta + marker layer
-    const kWOptions = [22, 50, 75, 150, 300];
-    const stations = [];
-    for (let i=0;i<10;i++){
-      const lat = r(47.3,54.9), lng = r(6.0,14.9);
-      const power = kWOptions[Math.floor(rand()*kWOptions.length)];
-      const layer = L.circleMarker([lat,lng], {
-        radius: 7, weight:2, opacity:1, color:'#0f5132', fillColor:'#198754', fillOpacity:0.85
-      }).bindPopup('<b>EV Charger #'+(i+1)+'</b><br/>Power: '+power+' kW');
+    function renderStations(data){
+      // remove existing
+      stations.forEach(s => map.removeLayer(s.layer));
+      stations = data.map((s) => {
+        const hdv = (s.hdv || "").toUpperCase();
+        const heavy = hdv.includes("N2") || hdv.includes("N3");
+        const color = heavy ? "#ff7b00" : "#007bff"; // orange vs blue
 
-      stations.push({ lat, lng, power, layer });
-      layer.addTo(map);
+        const addr = [s.street || "", s.city || "", s.country || ""].filter(Boolean).join(" ");
+        const popup = \`
+          <b>\${s.name || "Unnamed"}</b><br/>
+          \${addr}<br/>
+          Operator: \${s.operator || "N/A"}<br/>
+          Power: \${(s.power ?? "?")} kW
+        \`;
+
+        const layer = L.circleMarker([s.lat, s.lon], {
+          radius: 7,
+          weight: 2,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.85
+        }).bindPopup(popup);
+
+        layer.addTo(map);
+        return { ...s, layer };
+      });
     }
 
-    // Expose a filter function for RN to call
-    window.applyFilter = function(minKw){
-      stations.forEach(s=>{
+    function applyFilter(minKw){
+      stations.forEach(s => {
         const onMap = map.hasLayer(s.layer);
-        const shouldShow = s.power >= minKw;
-        if (shouldShow && !onMap) s.layer.addTo(map);
-        if (!shouldShow && onMap) map.removeLayer(s.layer);
+        const show = (Number(s.power) || 0) >= minKw;
+        if (show && !onMap) s.layer.addTo(map);
+        if (!show && onMap) map.removeLayer(s.layer);
       });
-    };
+    }
+
+    // Message bridge
+    function handleMsg(e){
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "setStations") renderStations(msg.data || []);
+        if (msg.type === "applyFilter") applyFilter(Number(msg.minKw) || 0);
+      } catch(err) { console.error(err); }
+    }
+    document.addEventListener("message", handleMsg);
+    window.addEventListener("message", handleMsg);
   </script>
 </body>
 </html>
-`, []);
+`,
+    [SYGIC_KEY]
+  );
+
+  // --- Post stations when WebView is ready, and when stations change ---
+  const sendStations = useCallback(() => {
+    if (webReady && webRef.current) {
+      webRef.current.postMessage(JSON.stringify({ type: "setStations", data: stations }));
+    }
+  }, [webReady, stations]);
+
+  useEffect(() => {
+    sendStations();
+  }, [sendStations]);
 
   function applyFilter() {
     const value = Number(minPower) || 0;
-    // Call the function exposed by the WebView page
-    webRef.current?.injectJavaScript(`window.applyFilter && window.applyFilter(${value}); true;`);
+    webRef.current?.postMessage(JSON.stringify({ type: "applyFilter", minKw: value }));
     setShowFilter(false);
   }
 
@@ -92,15 +164,14 @@ export default function Index() {
         javaScriptEnabled
         domStorageEnabled
         setSupportMultipleWindows={false}
+        onLoadEnd={() => setWebReady(true)}  // ✅ ensures page is ready
         source={{ html }}
       />
 
-      {/* Simple floating button to open filter */}
       <Pressable style={styles.fab} onPress={() => setShowFilter(true)}>
         <Text style={styles.fabText}>Filter</Text>
       </Pressable>
 
-      {/* Filter modal */}
       <Modal visible={showFilter} transparent animationType="slide" onRequestClose={() => setShowFilter(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -110,7 +181,6 @@ export default function Index() {
               value={minPower}
               onChangeText={setMinPower}
               keyboardType="numeric"
-              placeholder="e.g. 100"
               style={styles.input}
             />
             <View style={styles.row}>
@@ -130,27 +200,16 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-  fab: {
-    position: "absolute", right: 16, bottom: 24,
-    backgroundColor: "#1f2937", paddingHorizontal: 16, paddingVertical: 12,
-    borderRadius: 999
-  },
+  fab: { position: "absolute", right: 16, bottom: 24, backgroundColor: "#1f2937", paddingHorizontal: 16, paddingVertical: 12, borderRadius: 999 },
   fabText: { color: "#fff", fontWeight: "600" },
-  modalBackdrop: {
-    flex:1, backgroundColor:"rgba(0,0,0,0.5)", alignItems:"center", justifyContent:"flex-end"
-  },
-  modalCard: {
-    width:"100%", backgroundColor:"#111827", padding:16, borderTopLeftRadius:16, borderTopRightRadius:16
-  },
-  title: { color:"#fff", fontSize:18, fontWeight:"700", marginBottom:12 },
-  label: { color:"#cbd5e1", marginBottom:6 },
-  input: {
-    backgroundColor:"#0b1220", borderColor:"#334155", borderWidth:1, color:"#fff",
-    paddingHorizontal:12, paddingVertical:10, borderRadius:8, marginBottom:12
-  },
-  row: { flexDirection:"row", justifyContent:"flex-end", gap:12 },
-  btn: { paddingHorizontal:14, paddingVertical:10, borderRadius:8 },
-  btnSecondary: { backgroundColor:"#374151" },
-  btnPrimary: { backgroundColor:"#16a34a" },
-  btnText: { color:"#fff", fontWeight:"600" }
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "flex-end" },
+  modalCard: { width: "100%", backgroundColor: "#111827", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  title: { color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 12 },
+  label: { color: "#cbd5e1", marginBottom: 6 },
+  input: { backgroundColor: "#0b1220", borderColor: "#334155", borderWidth: 1, color: "#fff", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, marginBottom: 12 },
+  row: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
+  btn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 },
+  btnSecondary: { backgroundColor: "#374151" },
+  btnPrimary: { backgroundColor: "#16a34a" },
+  btnText: { color: "#fff", fontWeight: "600" },
 });
