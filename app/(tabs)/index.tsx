@@ -144,7 +144,8 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "flex-end"
   },
   modalCard: {
-    width: "100%", backgroundColor: "#111827", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16
+    width: "100%", backgroundColor: "#111827", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16,
+    marginBottom: 160,
   },
   title: { color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 12 },
   label: { color: "#cbd5e1", marginBottom: 6 },
