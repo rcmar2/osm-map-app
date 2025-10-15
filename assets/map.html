@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    .badge { position:absolute; bottom:6px; left:8px; padding:2px 6px; border-radius:4px;
+      background:rgba(0,0,0,0.5); color:#fff; font-size:11px; z-index:1000; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="badge">© OpenStreetMap contributors | © Sygic</div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://maps.api.sygic.com/js/leaflet.sygic-1.1.0.js"></script>
+
+  <script>
+    let map, stations = [];
+
+    // --- helper: build a simple SVG pin icon in given color ---
+    function makePinIcon(color) {
+      const svg =
+        `<svg width="24" height="36" viewBox="0 0 24 36" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 0C5.925 0 1 4.925 1 11c0 7.5 8.5 15.5 10.2 17.1a1.2 1.2 0 0 0 1.6 0C14.5 26.5 23 18.5 23 11 23 4.925 18.075 0 12 0z" fill="${color}" stroke="white" stroke-width="1"/>
+          <circle cx="12" cy="11" r="4" fill="white" opacity="0.9"/>
+        </svg>`;
+      const url = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+      return L.icon({
+        iconUrl: url,
+        iconSize: [24, 36],
+        iconAnchor: [12, 36],
+        popupAnchor: [0, -28],
+      });
+    }
+
+    function initMap(sygicKey) {
+      map = L.map('map');
+      L.TileLayer.sygic(sygicKey, { poi: true }).addTo(map);
+
+      // Fit a wide Central Europe view
+      var sw = L.latLng(45.0, 5.0);
+      var ne = L.latLng(55.5, 20.0);
+      map.fitBounds(L.latLngBounds(sw, ne));
+    }
+
+    function renderStations(data) {
+      // remove existing markers
+      stations.forEach(s => map.removeLayer(s.layer));
+      stations = data.map((s) => {
+        const hdv = (s.hdv || "").toUpperCase();
+        const heavy = hdv.includes("N2") || hdv.includes("N3");
+        const color = heavy ? "#ff7b00" : "#007bff"; // orange vs blue
+        const addr = [s.street || "", s.city || "", s.country || ""].filter(Boolean).join(" ");
+
+        const popup = `
+          <b>${s.name || "Unnamed"}</b><br/>
+          ${addr}<br/>
+          Operator: ${s.operator || "N/A"}<br/>
+          Power: ${(s.power ?? "?")} kW
+        `;
+
+        const layer = L.marker([s.lat, s.lon], { icon: makePinIcon(color) }).bindPopup(popup);
+        layer.addTo(map);
+        return { ...s, layer };
+      });
+    }
+
+    function applyFilter(minKw) {
+      stations.forEach(s => {
+        const onMap = map.hasLayer(s.layer);
+        const show = (Number(s.power) || 0) >= minKw;
+        if (show && !onMap) s.layer.addTo(map);
+        if (!show && onMap) map.removeLayer(s.layer);
+      });
+    }
+
+    // Message bridge
+    function handleMsg(e) {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "init")          initMap(msg.sygicKey);
+        else if (msg.type === "setStations") renderStations(msg.data || []);
+        else if (msg.type === "applyFilter") applyFilter(Number(msg.minKw) || 0);
+      } catch (err) { console.error(err); }
+    }
+    document.addEventListener("message", handleMsg);
+    window.addEventListener("message", handleMsg);
+  </script>
+</body>
+</html>
